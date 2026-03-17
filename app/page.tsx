@@ -1,65 +1,148 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect, useMemo } from 'react'
+import { BookOpen } from 'lucide-react'
+import { ReadingListItem } from '@/lib/supabase'
+import AddItemForm from '@/components/AddItemForm'
+import EditModal from '@/components/EditModal'
+import FilterBar from '@/components/FilterBar'
+import ReadingListRow from '@/components/ReadingListRow'
+
+export type SortField = 'title' | 'created_at'
+export type SortOrder = 'asc' | 'desc'
+export type ReadFilter = 'all' | 'read' | 'unread'
 
 export default function Home() {
+  const [items, setItems] = useState<ReadingListItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sortField, setSortField] = useState<SortField>('created_at')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all')
+  const [editingItem, setEditingItem] = useState<ReadingListItem | null>(null)
+
+  async function fetchItems() {
+    setLoading(true)
+    const res = await fetch('/api/reading-list')
+    const data = await res.json()
+    setItems(data)
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchItems() }, [])
+
+  const displayedItems = useMemo(() => {
+    let filtered = [...items]
+
+    if (readFilter !== 'all') {
+      filtered = filtered.filter(i => readFilter === 'read' ? i.is_read : !i.is_read)
+    }
+
+    filtered.sort((a, b) => {
+      const cmp = sortField === 'title'
+        ? a.title.localeCompare(b.title)
+        : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return sortOrder === 'asc' ? cmp : -cmp
+    })
+
+    return filtered
+  }, [items, sortField, sortOrder, readFilter])
+
+  async function handleDelete(id: string) {
+    await fetch(`/api/reading-list/${id}`, { method: 'DELETE' })
+    setItems(prev => prev.filter(i => i.id !== id))
+  }
+
+  async function handleToggleRead(item: ReadingListItem) {
+    const res = await fetch(`/api/reading-list/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_read: !item.is_read }),
+    })
+    const updated = await res.json()
+    setItems(prev => prev.map(i => i.id === updated.id ? updated : i))
+  }
+
+  function handleSortChange(field: SortField) {
+    if (sortField === field) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortOrder(field === 'created_at' ? 'desc' : 'asc')
+    }
+  }
+
+  function handleClearFilters() {
+    setSortField('created_at')
+    setSortOrder('desc')
+    setReadFilter('all')
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="min-h-screen bg-base-200">
+      <div className="max-w-4xl mx-auto px-4 py-10">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-8">
+          <BookOpen className="w-7 h-7 text-primary" />
+          <h1 className="text-3xl font-bold text-base-content">Reading List</h1>
+          <span className="badge badge-neutral ml-1">{items.length}</span>
+        </div>
+
+        {/* Add item inline form */}
+        <AddItemForm onCreated={item => setItems(prev => [item, ...prev])} />
+
+        {/* Filter / sort bar */}
+        <FilterBar
+          sortField={sortField}
+          sortOrder={sortOrder}
+          readFilter={readFilter}
+          onSortChange={handleSortChange}
+          onReadFilterChange={setReadFilter}
+          onClear={handleClearFilters}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+        {/* List */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <span className="loading loading-spinner loading-lg text-primary" />
+          </div>
+        ) : displayedItems.length === 0 ? (
+          <div className="card bg-base-100 shadow-sm">
+            <div className="card-body items-center text-center py-16 text-base-content/40">
+              <BookOpen className="w-12 h-12 mb-3 opacity-30" />
+              <p className="text-lg font-medium">No items found</p>
+              <p className="text-sm">
+                {items.length > 0 ? 'Try adjusting your filters.' : 'Add your first book above to get started.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="card bg-base-100 shadow-sm overflow-hidden">
+            <div className="divide-y divide-base-200">
+              {displayedItems.map(item => (
+                <ReadingListRow
+                  key={item.id}
+                  item={item}
+                  onEdit={() => setEditingItem(item)}
+                  onDelete={() => handleDelete(item.id)}
+                  onToggleRead={() => handleToggleRead(item)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {editingItem && (
+        <EditModal
+          item={editingItem}
+          onUpdated={updated => {
+            setItems(prev => prev.map(i => i.id === updated.id ? updated : i))
+            setEditingItem(null)
+          }}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
     </div>
-  );
+  )
 }
